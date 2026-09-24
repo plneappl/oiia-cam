@@ -1,5 +1,5 @@
 use std::thread::sleep;
-use std::time::{self, Duration, Instant};
+use std::time::{Duration, Instant};
 
 use image::Rgb;
 

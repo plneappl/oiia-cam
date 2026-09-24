@@ -1,7 +1,6 @@
 use crate::util::{Frame, Size, Vec2d};
-use image::{GenericImageView, ImageBuffer, ImageError, Rgb, open};
+use image::{ImageError, open};
 
-//pub type Image = Box<dyn GenericImageView<Pixel = Rgb<u8>>>;
 pub struct Image {
     pub buf: Vec<u8>,
     pub size: Size,
