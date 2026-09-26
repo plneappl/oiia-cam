@@ -1,13 +1,19 @@
-use std::sync::Arc;
+use std::{
+    ops::RangeBounds,
+    sync::{
+        Arc,
+        mpsc::{Receiver, Sender, channel},
+    },
+};
 
 use raw_window_handle::{DisplayHandle, RawDisplayHandle, RawWindowHandle};
 use wgpu::{
-    Backends, Device, ExperimentalFeatures, Instance, InstanceDescriptor, Queue,
-    RequestAdapterOptions, Surface, TextureFormat,
-    wgc::{global::Global, id::Id},
+    Backends, BufferUsages, Device, ExperimentalFeatures, Instance, InstanceDescriptor, Queue,
+    RequestAdapterOptions, Surface, TextureFormat, TextureUsages,
+    wgc::{device::queue::QueueSubmitError::CommandEncoder, global::Global, id::Id},
     wgt::WgpuHasDisplayHandle,
 };
-use winit::{event_loop::OwnedDisplayHandle, window::Window};
+use winit::{dpi::Size, event_loop::OwnedDisplayHandle, window::Window};
 
 pub struct Renderer<'a> {
     wgpu_instance: Instance,
@@ -17,10 +23,15 @@ pub struct Renderer<'a> {
     queue: Queue,
     surface_format: TextureFormat,
     size: winit::dpi::PhysicalSize<u32>,
+    images_sender: &'a Sender<Vec<u8>>,
 }
 
 impl<'a> Renderer<'a> {
-    pub async fn new(display: OwnedDisplayHandle, window: Arc<Window>) -> Renderer<'a> {
+    pub async fn new(
+        display: OwnedDisplayHandle,
+        window: Arc<Window>,
+        images_sender: &'a Sender<Vec<u8>>,
+    ) -> Renderer<'a> {
         let inst_descriptor = InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -65,6 +76,7 @@ impl<'a> Renderer<'a> {
             queue: queue,
             surface_format: cap.formats[0],
             size: size,
+            images_sender: images_sender,
         }
     }
 
@@ -110,8 +122,8 @@ impl<'a> Renderer<'a> {
                 ..Default::default()
             });
 
-        // Renders a GREEN screen
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut encoder2 = self.device.create_command_encoder(&Default::default());
         // Create the renderpass which will clear the screen.
         let renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
@@ -120,7 +132,12 @@ impl<'a> Renderer<'a> {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -129,16 +146,51 @@ impl<'a> Renderer<'a> {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        let buffer = self.device.create_buffer(&wgpu::wgt::BufferDescriptor {
+            label: None,
+            size: u64::from(self.size.width) * u64::from(self.size.height) * 4,
+            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let buffer_size = buffer.size();
+        let buffer_ref = Arc::new(buffer);
+        let buffer_info = wgpu::TexelCopyBufferInfo {
+            buffer: &buffer_ref.clone(),
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(self.size.width * 4),
+                rows_per_image: Some(self.size.height),
+            },
+        };
+        encoder2.copy_texture_to_buffer(
+            surface_texture.texture.as_image_copy(),
+            buffer_info,
+            wgpu::Extent3d {
+                width: self.size.width,
+                height: self.size.height,
+                depth_or_array_layers: 1,
+            },
+        );
 
         // If you wanted to call any drawing commands, they would go here.
-
         // End the renderpass.
         drop(renderpass);
 
         // Submit the command in the queue to execute
-        self.queue.submit([encoder.finish()]);
+        self.queue.submit([encoder.finish(), encoder2.finish()]);
         self.window.pre_present_notify();
         self.queue.present(surface_texture);
+        let images = self.images_sender.clone();
+        buffer_ref
+            .clone()
+            .map_async(wgpu::MapMode::Read, 0..buffer_size, move |it| {
+                if it.is_ok() {
+                    let b = buffer_ref.clone();
+                    it.unwrap();
+                    let buf = b.get_mapped_range(0..b.size()).unwrap();
+                    images.send(buf.to_vec()).unwrap();
+                }
+            });
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -150,7 +202,7 @@ impl<'a> Renderer<'a> {
 
     fn configure_surface(&self) {
         let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
             format: self.surface_format,
             color_space: wgpu::SurfaceColorSpace::Auto,
             // Request compatibility with the sRGB-format texture view we‘re going to create later.
