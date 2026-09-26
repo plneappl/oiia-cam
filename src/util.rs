@@ -1,4 +1,6 @@
+use cgmath::Vector3;
 use wgpu::Extent3d;
+use winit::dpi::PhysicalSize;
 
 #[derive(Copy, Clone)]
 pub struct Size {
@@ -16,12 +18,21 @@ impl Size {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Vec2d {
     pub x: i32,
     pub y: i32,
 }
 
 impl Vec2d {
+    pub fn to_screen(&self, screen_size: PhysicalSize<u32>) -> Vector3<f32> {
+        Vector3 {
+            x: 2.0 * (self.x as f32) / (screen_size.width as f32) - 1.0,
+            y: 2.0 * (self.y as f32) / (screen_size.height as f32) - 1.0,
+            z: 0.0,
+        }
+    }
+
     pub fn plus(&self, other: &Vec2d) -> Vec2d {
         Vec2d {
             x: self.x + other.x,

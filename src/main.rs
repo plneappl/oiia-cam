@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, channel, sync_channel};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, Thread, sleep};
 use std::time::{Duration, Instant};
 
@@ -11,14 +11,15 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use crate::animation::Animation;
 use crate::application::App;
 use crate::bounce::Bounce;
-use crate::resources::read_resources;
+use crate::resources::{Resources, read_resources};
 use crate::scene::build_scene;
 use crate::state::State;
-use crate::util::Size;
+use crate::util::{Size, Vec2d};
 
 mod animation;
 mod application;
 mod bounce;
+mod object;
 mod renderer;
 mod resources;
 mod scene;
@@ -27,14 +28,38 @@ mod texture;
 mod util;
 
 fn send_images_to_camera(
-    continue_receiving: Arc<AtomicBool>,
+    is_running: Arc<AtomicBool>,
     receiver: Receiver<Vec<u8>>,
     mut camera: Camera,
 ) {
-    while continue_receiving.load(Ordering::Relaxed) {
+    while is_running.load(Ordering::Relaxed) {
         match receiver.recv() {
             Ok(img) => camera.send(&img).unwrap(),
             Err(_) => break,
+        }
+    }
+}
+
+fn state_thread(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>>) {
+    let mut animation = Bounce {
+        x_dir: 10,
+        y_dir: 10,
+    };
+    let frame_time = Duration::from_millis(1000 / 60);
+    while is_running.load(Ordering::Relaxed) {
+        let now = Instant::now();
+        let mut s = state.lock().unwrap();
+        let new_state = animation.next_state(&s);
+        *s = new_state;
+        drop(s);
+        let elapsed = now.elapsed();
+        if elapsed > frame_time {
+            println!(
+                "frame budget overrun by {}",
+                (elapsed - frame_time).as_millis()
+            );
+        } else if (frame_time - elapsed).as_millis() > 5 {
+            sleep(frame_time - elapsed);
         }
     }
 }
@@ -52,33 +77,22 @@ fn main() {
     .unwrap();
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
-    let (sender, receiver) = channel();
     let resources = read_resources().unwrap();
-    let mut app = App::new(size, &resources, &sender);
-    let continue_receiving_ref = Arc::new(AtomicBool::new(true));
-    let continue_receiving = continue_receiving_ref.clone();
-    let camera_thread = thread::spawn(move || {
-        send_images_to_camera(continue_receiving_ref, receiver, camera);
+    let state = State::new(&resources, size);
+    let state_mutex = Arc::new(Mutex::new(state));
+    let continue_receiving = Arc::new(AtomicBool::new(true));
+    let (sender, receiver) = sync_channel::<Vec<u8>>(2);
+    thread::scope(|scope| {
+        let mut app = App::new(size, &resources, state_mutex.clone(), sender);
+        scope.spawn(|| {
+            send_images_to_camera(continue_receiving.clone(), receiver, camera);
+        });
+        scope.spawn(|| {
+            state_thread(continue_receiving.clone(), state_mutex.clone());
+        });
+        event_loop.run_app(&mut app).unwrap();
+        println!("exiting...");
+        continue_receiving.store(false, Ordering::Relaxed);
     });
-    event_loop.run_app(&mut app).unwrap();
-    println!("exiting...");
-    drop(app);
-    drop(sender);
-    continue_receiving.store(false, Ordering::Relaxed);
-    camera_thread.join().unwrap();
     println!("done.");
-
-    //let mut state = State::new(&resources, the_scene.size);
-    //let mut animation = Bounce {
-    //    x_dir: 10,
-    //    y_dir: 10,
-    //};
-    //let frame_time = Duration::from_millis(1000 / u64::from(the_scene.fps));
-    //loop {
-    //    let now = Instant::now();
-    //    let mut frame = the_scene.blank(Rgba([255, 255, 255, 255]));
-    //
-    //    state.render(&mut frame);
-    //    state = animation.next_state(state);
-    //}
 }

@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use crate::{
+    object::Object,
     resources::{Image, Resources, place_image},
     util::{Frame, Size, Vec2d},
 };
@@ -13,11 +16,17 @@ impl<'a> State<'a> {
     pub fn new(resources: &'a Resources, size: Size) -> State<'a> {
         State {
             size: size,
-            cat_pos: Vec2d { x: 0, y: 0 },
+            cat_pos: Vec2d { x: 400, y: 400 },
             cat_img: &resources.standing,
         }
     }
     pub fn render(&self, frame: &mut Frame) -> () {
         place_image(&self.cat_img, frame, &self.cat_pos);
+    }
+
+    pub fn render_gpu(&self) -> Vec<Object> {
+        vec![Object {
+            position: self.cat_pos,
+        }]
     }
 }

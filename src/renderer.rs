@@ -1,4 +1,7 @@
-use std::sync::{Arc, mpsc::Sender};
+use std::sync::{
+    Arc,
+    mpsc::{Sender, SyncSender},
+};
 
 use cgmath::{Quaternion, Vector3, prelude::*};
 use wgpu::{
@@ -9,31 +12,13 @@ use wgpu::{
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
 use crate::{
-    resources::Resources,
+    object::Object,
+    resources::{Image, Resources},
     texture,
-    util::{self, Instance, InstanceRaw, Vertex},
+    util::{self, Instance, InstanceRaw, Size, Vertex},
 };
 
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 0.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    }, // A
-    Vertex {
-        position: [0.0, -0.2, 0.0],
-        tex_coords: [0.0, 1.0],
-    }, // B
-    Vertex {
-        position: [-0.2, -0.2, 0.0],
-        tex_coords: [1.0, 1.0],
-    }, // C
-    Vertex {
-        position: [-0.2, 0.0, 0.0],
-        tex_coords: [1.0, 0.0],
-    }, // D
-];
-
-const INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
+const QUAD_INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
 pub struct Renderer<'a> {
     wgpu_instance: wgpu::Instance,
@@ -44,7 +29,7 @@ pub struct Renderer<'a> {
     config: SurfaceConfiguration,
     surface_format: TextureFormat,
     size: winit::dpi::PhysicalSize<u32>,
-    images_sender: &'a Sender<Vec<u8>>,
+    images_sender: SyncSender<Vec<u8>>,
     render_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -59,7 +44,7 @@ impl<'a> Renderer<'a> {
         display: OwnedDisplayHandle,
         window: Arc<Window>,
         resources: &Resources,
-        images_sender: &'a Sender<Vec<u8>>,
+        images_sender: SyncSender<Vec<u8>>,
     ) -> Renderer<'a> {
         let size = window.inner_size();
         let inst_descriptor = InstanceDescriptor {
@@ -115,19 +100,20 @@ impl<'a> Renderer<'a> {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
+        let diffuse_texture =
+            texture::Texture::from_image(&device, &queue, size, &resources.standing, None).unwrap();
+        let vertices = texture::Texture::create_vertices(size, &resources.standing);
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(vertices.as_slice()),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: bytemuck::cast_slice(QUAD_INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-
-        let diffuse_texture =
-            texture::Texture::from_image(&device, &queue, &resources.standing, None).unwrap();
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -230,19 +216,20 @@ impl<'a> Renderer<'a> {
             render_pipeline: render_pipeline,
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
-            num_vertices: VERTICES.len() as u32,
-            num_indices: INDICES.len() as u32,
+            num_vertices: vertices.len() as u32,
+            num_indices: QUAD_INDICES.len() as u32,
             standing: diffuse_texture,
             diffuse_bind_group: diffuse_bind_group,
         }
     }
 
-    pub fn render(&mut self) {
-        println!("in render");
-        self.draw();
+    pub fn render(&mut self, objects: Vec<Object>) {
+        //println!("in render");
+        self.draw(objects);
+        self.window.request_redraw();
     }
 
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, objects: Vec<Object>) {
         // Create texture view.
         // NOTE: We must handle Timeout because the surface may be unavailable
         // (e.g., when the window is occluded on macOS).
@@ -319,18 +306,10 @@ impl<'a> Renderer<'a> {
             },
         };
 
-        let positions = [
-            Vector3 {
-                x: 0.0,
-                y: 0.0,
-                z: 1.0,
-            },
-            Vector3 {
-                x: 0.2,
-                y: 0.0,
-                z: 1.0,
-            },
-        ];
+        let positions = objects
+            .iter()
+            .map(|it| it.position.to_screen(self.size))
+            .collect::<Vec<_>>();
         let (instances, instance_buffer) =
             Self::positions_to_instance_buffer(&self.device, &positions);
 
@@ -367,7 +346,7 @@ impl<'a> Renderer<'a> {
                     let b = buffer_ref.clone();
                     it.unwrap();
                     let buf = b.get_mapped_range(0..b.size()).unwrap();
-                    images.send(buf.to_vec()).unwrap();
+                    images.send(buf.to_vec());
                 }
             });
     }

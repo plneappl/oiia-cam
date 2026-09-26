@@ -42,7 +42,3 @@ pub fn place_image(img: &Image, frame: &mut Frame, pos: &Vec2d) -> () {
             .copy_from_slice(&img.buf.as_slice()[off_img..(off_img + w_img)]);
     }
 }
-
-pub fn place_image_gpu(device: &Device, img: &Image, pos: Vec2d) -> Vec<Instance> {
-    vec![]
-}

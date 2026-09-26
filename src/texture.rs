@@ -1,19 +1,27 @@
+use std::cmp::max;
+
 use anyhow::*;
 use image::GenericImageView;
+use winit::dpi::PhysicalSize;
 
-use crate::resources::Image;
+use crate::{
+    resources::Image,
+    util::{Size, Vertex},
+};
 
 pub struct Texture {
     #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    pub vertices: Vec<Vertex>,
 }
 
 impl Texture {
     pub fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        window_size: PhysicalSize<u32>,
         img: &Image,
         label: Option<&str>,
     ) -> Result<Self> {
@@ -58,11 +66,39 @@ impl Texture {
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
+        let vertices = Self::create_vertices(window_size, img);
 
         Ok(Self {
-            texture,
-            view,
-            sampler,
+            texture: texture,
+            view: view,
+            sampler: sampler,
+            vertices: vertices,
         })
+    }
+
+    pub fn create_vertices(window_size: PhysicalSize<u32>, img: &Image) -> Vec<Vertex> {
+        let window_width = window_size.width as f64;
+        let window_height = window_size.height as f64;
+        let w = (-1.0 * (img.size.w as f64) / window_width) as f32;
+        let h = (-1.0 * (img.size.h as f64) / window_height) as f32;
+
+        vec![
+            Vertex {
+                position: [-w, -h, 0.0],
+                tex_coords: [1.0, 0.0],
+            }, // A
+            Vertex {
+                position: [-w, h, 0.0],
+                tex_coords: [1.0, 1.0],
+            }, // B
+            Vertex {
+                position: [w, h, 0.0],
+                tex_coords: [0.0, 1.0],
+            }, // C
+            Vertex {
+                position: [w, -h, 0.0],
+                tex_coords: [0.0, 0.0],
+            }, // D
+        ]
     }
 }

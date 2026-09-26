@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::atomic::AtomicPtr;
+use std::sync::mpsc::{Receiver, Sender, SyncSender, channel};
+use std::sync::{Arc, Mutex};
 
 use raw_window_handle::{HasDisplayHandle, HasRawDisplayHandle, HasWindowHandle};
 use wgpu::naga::compact::KeepUnused::No;
@@ -9,27 +10,33 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
+use crate::object::Object;
 use crate::renderer::Renderer;
 use crate::resources::Resources;
+use crate::state::State;
+use crate::util::Vec2d;
 
 pub struct App<'a> {
     pub renderer: Option<Renderer<'a>>,
     size: crate::util::Size,
     resources: &'a Resources,
-    sender: &'a Sender<Vec<u8>>,
+    state: Arc<Mutex<State<'a>>>,
+    sender: SyncSender<Vec<u8>>,
 }
 
 impl<'a> App<'a> {
     pub fn new(
         size: crate::util::Size,
         resources: &'a Resources,
-        sender: &'a Sender<Vec<u8>>,
+        state: Arc<Mutex<State<'a>>>,
+        sender: SyncSender<Vec<u8>>,
     ) -> App<'a> {
         App {
             renderer: None,
             size: size,
             resources: resources,
             sender: sender,
+            state: state,
         }
     }
 
@@ -56,7 +63,7 @@ impl<'a> ApplicationHandler for App<'a> {
             event_loop.owned_display_handle(),
             window.clone(),
             self.resources,
-            &self.sender,
+            self.sender.clone(),
         );
         self.renderer = Some(pollster::block_on(renderer_fut));
         window.request_redraw();
@@ -72,7 +79,7 @@ impl<'a> ApplicationHandler for App<'a> {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                renderer.render();
+                renderer.render(self.state.lock().unwrap().render_gpu());
             }
             WindowEvent::Resized(size) => {
                 renderer.resize(size);
