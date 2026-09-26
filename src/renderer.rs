@@ -1,37 +1,49 @@
 use std::sync::{Arc, mpsc::Sender};
 
+use cgmath::{Quaternion, Vector3, prelude::*};
 use wgpu::{
-    BindGroup, Buffer, BufferUsages, Device, ExperimentalFeatures, Instance, InstanceDescriptor,
-    Queue, RenderPipeline, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
+    BindGroup, Buffer, BufferUsages, Device, ExperimentalFeatures, InstanceDescriptor, Queue,
+    RenderPipeline, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
     TextureUsages, util::DeviceExt,
 };
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
-use crate::{resources::Resources, texture, util::Vertex};
+use crate::{
+    resources::Resources,
+    texture,
+    util::{self, Instance, InstanceRaw, Vertex},
+};
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [1.0, 1.0, 0.0],
+        position: [0.0, 0.0, 0.0],
         tex_coords: [0.0, 0.0],
     }, // A
     Vertex {
-        position: [1.0, -1.0, 0.0],
+        position: [0.0, -0.2, 0.0],
         tex_coords: [0.0, 1.0],
     }, // B
     Vertex {
-        position: [-1.0, -1.0, 0.0],
+        position: [-0.2, -0.2, 0.0],
         tex_coords: [1.0, 1.0],
     }, // C
     Vertex {
-        position: [-1.0, 1.0, 0.0],
+        position: [-0.2, 0.0, 0.0],
         tex_coords: [1.0, 0.0],
     }, // D
 ];
 
 const INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
+const NUM_INSTANCES_PER_ROW: u32 = 10;
+const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+    0.0,
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+);
+
 pub struct Renderer<'a> {
-    wgpu_instance: Instance,
+    wgpu_instance: wgpu::Instance,
     window: Arc<Window>,
     surface: Surface<'a>,
     device: Device,
@@ -47,6 +59,8 @@ pub struct Renderer<'a> {
     num_indices: u32,
     standing: texture::Texture,
     diffuse_bind_group: BindGroup,
+    instances: Vec<util::Instance>,
+    instance_buffer: wgpu::Buffer,
 }
 
 impl<'a> Renderer<'a> {
@@ -163,6 +177,22 @@ impl<'a> Renderer<'a> {
             ],
             label: Some("diffuse_bind_group"),
         });
+
+        let positions = [
+            Vector3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Vector3 {
+                x: 0.2,
+                y: 0.0,
+                z: 1.0,
+            },
+        ];
+
+        let (instances, instance_buffer) = Self::positions_to_instance_buffer(&device, &positions);
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -174,8 +204,8 @@ impl<'a> Renderer<'a> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"),     // 1.
-                buffers: &[Some(Vertex::desc())], // 2.
+                entry_point: Some("vs_main"), // 1.
+                buffers: &[Some(Vertex::desc()), Some(InstanceRaw::desc())], // 2.
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -229,6 +259,8 @@ impl<'a> Renderer<'a> {
             num_indices: INDICES.len() as u32,
             standing: diffuse_texture,
             diffuse_bind_group: diffuse_bind_group,
+            instances: instances,
+            instance_buffer: instance_buffer,
         }
     }
 
@@ -318,9 +350,10 @@ impl<'a> Renderer<'a> {
         renderpass.set_pipeline(&self.render_pipeline);
         renderpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        renderpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        renderpass.draw_indexed(0..self.num_indices, 0, 0..1);
+        renderpass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
         // End the renderpass.
         drop(renderpass);
 
@@ -360,6 +393,27 @@ impl<'a> Renderer<'a> {
 
     fn configure_surface(&self) {
         self.surface.configure(&self.device, &self.config);
+    }
+
+    fn positions_to_instance_buffer(
+        device: &Device,
+        positions: &[Vector3<f32>],
+    ) -> (Vec<Instance>, Buffer) {
+        let instances = positions
+            .iter()
+            .map(|pos| Instance {
+                position: *pos,
+                rotation: Quaternion::from_axis_angle(pos.normalize(), cgmath::Deg(0.0)),
+            })
+            .collect::<Vec<_>>();
+
+        let instance_data = instances.iter().map(|it| it.to_raw()).collect::<Vec<_>>();
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        (instances, instance_buffer)
     }
 
     pub fn exit(&mut self) {
