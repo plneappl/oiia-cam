@@ -2,22 +2,33 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use image::Rgb;
+use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::animation::Animation;
+use crate::application::App;
 use crate::bounce::Bounce;
 use crate::resources::read_resources;
 use crate::scene::build_scene;
 use crate::state::State;
+use crate::util::Size;
 
 mod animation;
+mod application;
 mod bounce;
+mod renderer;
 mod resources;
 mod scene;
 mod state;
 mod util;
 
 fn main() {
-    let mut the_scene = build_scene(1280, 720, 60).unwrap();
+    let size = Size { w: 1280, h: 720 };
+    let event_loop = EventLoop::new().unwrap();
+    event_loop.set_control_flow(ControlFlow::Poll);
+    let mut app = App::new(size);
+    event_loop.run_app(&mut app).unwrap();
+
+    let mut the_scene = build_scene(size, 60).unwrap();
     let resources = read_resources().unwrap();
     let mut state = State::new(&resources, the_scene.size);
     let mut animation = Bounce {

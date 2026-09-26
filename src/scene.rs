@@ -8,16 +8,16 @@ pub struct Scene {
     pub fps: u32,
 }
 
-pub fn build_scene(w: usize, h: usize, fps: u32) -> Result<Scene, VirtualCamError> {
+pub fn build_scene(size: Size, fps: u32) -> Result<Scene, VirtualCamError> {
     Ok(Scene {
         camera: Camera::builder(
-            u32::try_from(w).unwrap(),
-            u32::try_from(h).unwrap(),
+            u32::try_from(size.w).unwrap(),
+            u32::try_from(size.h).unwrap(),
             f64::from(fps),
         )
         .format(PixelFormat::RGB)
         .build()?,
-        size: Size { w: w, h: h },
+        size: size,
         fps: fps,
     })
 }
