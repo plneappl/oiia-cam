@@ -10,18 +10,25 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
 use crate::renderer::Renderer;
+use crate::resources::Resources;
 
 pub struct App<'a> {
     pub renderer: Option<Renderer<'a>>,
     size: crate::util::Size,
+    resources: &'a Resources,
     sender: &'a Sender<Vec<u8>>,
 }
 
 impl<'a> App<'a> {
-    pub fn new(size: crate::util::Size, sender: &'a Sender<Vec<u8>>) -> App<'a> {
+    pub fn new(
+        size: crate::util::Size,
+        resources: &'a Resources,
+        sender: &'a Sender<Vec<u8>>,
+    ) -> App<'a> {
         App {
             renderer: None,
             size: size,
+            resources: resources,
             sender: sender,
         }
     }
@@ -48,6 +55,7 @@ impl<'a> ApplicationHandler for App<'a> {
         let renderer_fut = Renderer::new(
             event_loop.owned_display_handle(),
             window.clone(),
+            self.resources,
             &self.sender,
         );
         self.renderer = Some(pollster::block_on(renderer_fut));
@@ -59,6 +67,8 @@ impl<'a> ApplicationHandler for App<'a> {
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
+
+                renderer.exit();
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {

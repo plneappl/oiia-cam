@@ -12,7 +12,7 @@ pub struct Resources {
 }
 
 pub fn read_resources<'a>() -> Result<Resources, ImageError> {
-    let standing = open("cat.png")?.into_rgb8();
+    let standing = open("cat.png")?.into_rgba8();
     let size = Size {
         w: usize::try_from(standing.width()).unwrap(),
         h: usize::try_from(standing.height()).unwrap(),

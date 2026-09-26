@@ -30,10 +30,11 @@ fn send_images_to_camera(
     receiver: Receiver<Vec<u8>>,
     mut camera: Camera,
 ) {
-    while continue_receiving.clone().load(Ordering::Relaxed) {
-        let img = receiver.recv().unwrap();
-        println!("recv");
-        camera.send(&img).unwrap();
+    while continue_receiving.load(Ordering::Relaxed) {
+        match receiver.recv() {
+            Ok(img) => camera.send(&img).unwrap(),
+            Err(_) => break,
+        }
     }
 }
 
@@ -43,28 +44,32 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
     let (sender, receiver) = channel();
-    let mut app = App::new(size, &sender);
+    let resources = read_resources().unwrap();
+    let mut app = App::new(size, &resources, &sender);
     let continue_receiving_ref = Arc::new(AtomicBool::new(true));
     let continue_receiving = continue_receiving_ref.clone();
     let camera_thread = thread::spawn(move || {
         send_images_to_camera(continue_receiving_ref, receiver, camera);
     });
     event_loop.run_app(&mut app).unwrap();
+    println!("exiting...");
+    drop(app);
+    drop(sender);
     continue_receiving.store(false, Ordering::Relaxed);
-    camera_thread.join();
+    camera_thread.join().unwrap();
+    println!("done.");
 
-    let resources = read_resources().unwrap();
-    let mut state = State::new(&resources, the_scene.size);
-    let mut animation = Bounce {
-        x_dir: 10,
-        y_dir: 10,
-    };
-    let frame_time = Duration::from_millis(1000 / u64::from(the_scene.fps));
-    loop {
-        let now = Instant::now();
-        let mut frame = the_scene.blank(Rgba([255, 255, 255, 255]));
-
-        state.render(&mut frame);
-        state = animation.next_state(state);
-    }
+    //let mut state = State::new(&resources, the_scene.size);
+    //let mut animation = Bounce {
+    //    x_dir: 10,
+    //    y_dir: 10,
+    //};
+    //let frame_time = Duration::from_millis(1000 / u64::from(the_scene.fps));
+    //loop {
+    //    let now = Instant::now();
+    //    let mut frame = the_scene.blank(Rgba([255, 255, 255, 255]));
+    //
+    //    state.render(&mut frame);
+    //    state = animation.next_state(state);
+    //}
 }

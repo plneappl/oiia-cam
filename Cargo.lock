@@ -1587,6 +1587,7 @@ dependencies = [
 name = "oiia-cam"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "image",
  "pollster",
  "raw-window-handle",
