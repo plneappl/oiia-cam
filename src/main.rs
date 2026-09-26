@@ -23,6 +23,7 @@ mod renderer;
 mod resources;
 mod scene;
 mod state;
+mod texture;
 mod util;
 
 fn send_images_to_camera(

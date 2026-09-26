@@ -1,5 +1,5 @@
 use crate::util::{Frame, Size, Vec2d};
-use image::{ImageError, open};
+use image::{ImageError, load_from_memory};
 
 pub struct Image {
     pub buf: Vec<u8>,
@@ -12,7 +12,7 @@ pub struct Resources {
 }
 
 pub fn read_resources<'a>() -> Result<Resources, ImageError> {
-    let standing = open("cat.png")?.into_rgba8();
+    let standing = load_from_memory(include_bytes!("../resources/cat.png"))?.into_rgba8();
     let size = Size {
         w: usize::try_from(standing.width()).unwrap(),
         h: usize::try_from(standing.height()).unwrap(),

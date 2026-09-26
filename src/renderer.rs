@@ -1,53 +1,34 @@
-use std::{
-    iter::Map,
-    ops::RangeBounds,
-    sync::{
-        Arc,
-        mpsc::{Receiver, Sender, channel},
-    },
-};
+use std::sync::{Arc, mpsc::Sender};
 
-use raw_window_handle::{DisplayHandle, RawDisplayHandle, RawWindowHandle};
 use wgpu::{
-    Backends, BindGroup, Buffer, BufferUsages, Device, ExperimentalFeatures, Instance,
-    InstanceDescriptor, Origin3d, Queue, RenderPipeline, RequestAdapterOptions, Sampler, Surface,
-    SurfaceConfiguration, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureFormat,
-    TextureUsages,
-    naga::proc::index,
-    util::DeviceExt,
-    wgt::{TextureDescriptor, WgpuHasDisplayHandle},
+    BindGroup, Buffer, BufferUsages, Device, ExperimentalFeatures, Instance, InstanceDescriptor,
+    Queue, RenderPipeline, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
+    TextureUsages, util::DeviceExt,
 };
-use winit::{dpi::Size, event_loop::OwnedDisplayHandle, window::Window};
+use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
-use crate::{
-    resources::{Image, Resources},
-    util::Vertex,
-};
+use crate::{resources::Resources, texture, util::Vertex};
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-0.0868241, 0.49240386, 0.0],
-        tex_coords: [0.4131759, 0.99240386],
+        position: [1.0, 1.0, 0.0],
+        tex_coords: [0.0, 0.0],
     }, // A
     Vertex {
-        position: [-0.49513406, 0.06958647, 0.0],
-        tex_coords: [0.0048659444, 0.56958647],
+        position: [1.0, -1.0, 0.0],
+        tex_coords: [0.0, 1.0],
     }, // B
     Vertex {
-        position: [-0.21918549, -0.44939706, 0.0],
-        tex_coords: [0.28081453, 0.05060294],
+        position: [-1.0, -1.0, 0.0],
+        tex_coords: [1.0, 1.0],
     }, // C
     Vertex {
-        position: [0.35966998, -0.3473291, 0.0],
-        tex_coords: [0.85967, 0.1526709],
+        position: [-1.0, 1.0, 0.0],
+        tex_coords: [1.0, 0.0],
     }, // D
-    Vertex {
-        position: [0.44147372, 0.2347359, 0.0],
-        tex_coords: [0.9414737, 0.7347359],
-    }, // E
 ];
 
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+const INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
 pub struct Renderer<'a> {
     wgpu_instance: Instance,
@@ -64,7 +45,7 @@ pub struct Renderer<'a> {
     index_buffer: Buffer,
     num_vertices: u32,
     num_indices: u32,
-    standing: Texture,
+    standing: texture::Texture,
     diffuse_bind_group: BindGroup,
 }
 
@@ -116,14 +97,14 @@ impl<'a> Renderer<'a> {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
             format: surface_format,
-            color_space: wgpu::SurfaceColorSpace::Auto,
+            color_space: wgpu::SurfaceColorSpace::Srgb,
             // Request compatibility with the sRGB-format texture view we‘re going to create later.
             view_formats: vec![surface_format],
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             width: size.width,
             height: size.height,
             desired_maximum_frame_latency: 2,
-            present_mode: wgpu::PresentMode::AutoVsync,
+            present_mode: wgpu::PresentMode::AutoNoVsync,
         };
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -141,42 +122,9 @@ impl<'a> Renderer<'a> {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let img_size = resources.standing.size.to_extend3d();
-        let tex1 = device.create_texture(&TextureDescriptor {
-            label: None,
-            size: img_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            TexelCopyTextureInfo {
-                texture: &tex1,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &resources.standing.buf,
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * img_size.width),
-                rows_per_image: Some(img_size.height),
-            },
-            img_size,
-        );
-        let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
-        let diffuse_texture_view = tex1.create_view(&wgpu::TextureViewDescriptor::default());
+        let diffuse_texture =
+            texture::Texture::from_image(&device, &queue, &resources.standing, None).unwrap();
+
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -206,11 +154,11 @@ impl<'a> Renderer<'a> {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
                 },
             ],
             label: Some("diffuse_bind_group"),
@@ -279,7 +227,7 @@ impl<'a> Renderer<'a> {
             index_buffer: index_buffer,
             num_vertices: VERTICES.len() as u32,
             num_indices: INDICES.len() as u32,
-            standing: tex1,
+            standing: diffuse_texture,
             diffuse_bind_group: diffuse_bind_group,
         }
     }
