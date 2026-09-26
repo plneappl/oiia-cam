@@ -1,5 +1,6 @@
-use crate::util::{Frame, Size, Vec2d};
+use crate::util::{Frame, Instance, Size, Vec2d};
 use image::{ImageError, load_from_memory};
+use wgpu::Device;
 
 pub struct Image {
     pub buf: Vec<u8>,
@@ -40,4 +41,8 @@ pub fn place_image(img: &Image, frame: &mut Frame, pos: &Vec2d) -> () {
         frame.buf.as_mut_slice()[off_frame..(off_frame + w_img)]
             .copy_from_slice(&img.buf.as_slice()[off_img..(off_img + w_img)]);
     }
+}
+
+pub fn place_image_gpu(device: &Device, img: &Image, pos: Vec2d) -> Vec<Instance> {
+    vec![]
 }

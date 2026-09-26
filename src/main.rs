@@ -5,7 +5,7 @@ use std::thread::{self, Thread, sleep};
 use std::time::{Duration, Instant};
 
 use image::{Rgb, Rgba};
-use virtualcam::Camera;
+use virtualcam::{Camera, PixelFormat};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::animation::Animation;
@@ -41,7 +41,15 @@ fn send_images_to_camera(
 
 fn main() {
     let size = Size { w: 1280, h: 720 };
-    let (mut the_scene, camera) = build_scene(size, 60).unwrap();
+    let fps = 60.0;
+    let camera = Camera::builder(
+        u32::try_from(size.w).unwrap(),
+        u32::try_from(size.h).unwrap(),
+        f64::from(fps),
+    )
+    .format(PixelFormat::RGBA)
+    .build()
+    .unwrap();
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
     let (sender, receiver) = channel();

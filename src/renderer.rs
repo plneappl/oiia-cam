@@ -35,13 +35,6 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    0.0,
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-);
-
 pub struct Renderer<'a> {
     wgpu_instance: wgpu::Instance,
     window: Arc<Window>,
@@ -59,8 +52,6 @@ pub struct Renderer<'a> {
     num_indices: u32,
     standing: texture::Texture,
     diffuse_bind_group: BindGroup,
-    instances: Vec<util::Instance>,
-    instance_buffer: wgpu::Buffer,
 }
 
 impl<'a> Renderer<'a> {
@@ -105,7 +96,6 @@ impl<'a> Renderer<'a> {
             })
             .await
             .unwrap();
-        let cap = surface.get_capabilities(&adapter);
         let surface_format = TextureFormat::Rgba8UnormSrgb;
 
         let surface_config = wgpu::SurfaceConfiguration {
@@ -178,21 +168,6 @@ impl<'a> Renderer<'a> {
             label: Some("diffuse_bind_group"),
         });
 
-        let positions = [
-            Vector3 {
-                x: 0.0,
-                y: 0.0,
-                z: 1.0,
-            },
-            Vector3 {
-                x: 0.2,
-                y: 0.0,
-                z: 1.0,
-            },
-        ];
-
-        let (instances, instance_buffer) = Self::positions_to_instance_buffer(&device, &positions);
-
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -259,8 +234,6 @@ impl<'a> Renderer<'a> {
             num_indices: INDICES.len() as u32,
             standing: diffuse_texture,
             diffuse_bind_group: diffuse_bind_group,
-            instances: instances,
-            instance_buffer: instance_buffer,
         }
     }
 
@@ -346,14 +319,29 @@ impl<'a> Renderer<'a> {
             },
         };
 
+        let positions = [
+            Vector3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Vector3 {
+                x: 0.2,
+                y: 0.0,
+                z: 1.0,
+            },
+        ];
+        let (instances, instance_buffer) =
+            Self::positions_to_instance_buffer(&self.device, &positions);
+
         // If you wanted to call any drawing commands, they would go here.
         renderpass.set_pipeline(&self.render_pipeline);
         renderpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        renderpass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        renderpass.set_vertex_buffer(1, instance_buffer.slice(..));
         renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        renderpass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+        renderpass.draw_indexed(0..self.num_indices, 0, 0..instances.len() as _);
         // End the renderpass.
         drop(renderpass);
 
