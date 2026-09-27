@@ -19,6 +19,7 @@ use crate::util::{Size, Vec2d};
 mod animation;
 mod application;
 mod bounce;
+mod microphone;
 mod object;
 mod renderer;
 mod resources;
@@ -64,6 +65,10 @@ fn state_thread(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>>) {
     }
 }
 
+fn microphone_thread(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>>) {
+    microphone::listen_to_microphone(is_running, state);
+}
+
 fn main() {
     let size = Size { w: 1280, h: 720 };
     let fps = 60.0;
@@ -89,6 +94,9 @@ fn main() {
         });
         scope.spawn(|| {
             state_thread(continue_receiving.clone(), state_mutex.clone());
+        });
+        scope.spawn(|| {
+            microphone_thread(continue_receiving.clone(), state_mutex.clone());
         });
         event_loop.run_app(&mut app).unwrap();
         println!("exiting...");

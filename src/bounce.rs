@@ -11,6 +11,10 @@ pub struct Bounce {
 
 impl Animation for Bounce {
     fn next_state<'a>(&mut self, state: &State<'a>) -> State<'a> {
+        if !state.microphone_input_detected {
+            return State { ..*state };
+        }
+
         let img_size_half = Size {
             w: state.cat_img.size.w / 2,
             h: state.cat_img.size.h / 2,
@@ -35,8 +39,7 @@ impl Animation for Bounce {
 
         State {
             cat_pos: new_pos,
-            size: state.size,
-            cat_img: state.cat_img,
+            ..*state
         }
     }
 }
