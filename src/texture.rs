@@ -5,24 +5,34 @@ use image::GenericImageView;
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    resources::Image,
+    resources::{Image, Resources},
     util::{Size, Vertex},
 };
 
-pub struct Texture {
+pub struct Texture<'a> {
     #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pub vertices: Vec<Vertex>,
+    pub indices: Vec<u16>,
+    pub image: &'a Image,
 }
 
-impl Texture {
+pub struct Textures<'a> {
+    pub standing: Texture<'a>,
+    pub rotation: Vec<Texture<'a>>,
+}
+
+const QUAD_INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
+
+impl<'a> Texture<'a> {
     pub fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         window_size: PhysicalSize<u32>,
-        img: &Image,
+        texture_count: u16,
+        img: &'a Image,
         label: Option<&str>,
     ) -> Result<Self> {
         let rgba = &img.buf;
@@ -73,10 +83,12 @@ impl Texture {
             view: view,
             sampler: sampler,
             vertices: vertices,
+            indices: QUAD_INDICES.iter().map(|it| it + texture_count).collect(),
+            image: img,
         })
     }
 
-    pub fn create_vertices(window_size: PhysicalSize<u32>, img: &Image) -> Vec<Vertex> {
+    fn create_vertices(window_size: PhysicalSize<u32>, img: &Image) -> Vec<Vertex> {
         let window_width = window_size.width as f64;
         let window_height = window_size.height as f64;
         let w = (-1.0 * (img.size.w as f64) / window_width) as f32;
@@ -100,5 +112,52 @@ impl Texture {
                 tex_coords: [0.0, 0.0],
             }, // D
         ]
+    }
+}
+
+impl<'a> Textures<'a> {
+    pub fn fromResources(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        window_size: PhysicalSize<u32>,
+        resources: &'a Resources,
+    ) -> Self {
+        let mut count = 0;
+        let standing_texture =
+            Texture::from_image(device, queue, window_size, count, &resources.standing, None)
+                .unwrap();
+        count += 1;
+        let mut rotation_textures = Vec::new();
+        rotation_textures.reserve(resources.rotation.len());
+        for img in &resources.rotation {
+            let tex = Texture::from_image(device, queue, window_size, count, &img, None).unwrap();
+            rotation_textures.push(tex);
+            count += 1;
+        }
+        Textures {
+            standing: standing_texture,
+            rotation: rotation_textures,
+        }
+    }
+
+    pub fn all_textures(&self) -> Vec<&Texture> {
+        vec![
+            vec![&self.standing],
+            self.rotation.iter().collect::<Vec<&Texture>>(),
+        ]
+        .concat()
+    }
+
+    pub fn vertices_and_indices(&self) -> (Vec<Vertex>, Vec<u16>) {
+        let all_texs = self.all_textures();
+        let vertices = all_texs
+            .iter()
+            .flat_map(|it| it.vertices.clone())
+            .collect::<Vec<Vertex>>();
+        let indices = all_texs
+            .iter()
+            .flat_map(|it| it.indices.clone())
+            .collect::<Vec<u16>>();
+        return (vertices, indices);
     }
 }

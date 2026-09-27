@@ -5,16 +5,16 @@ use std::sync::{
 
 use cgmath::{Quaternion, Vector3, prelude::*};
 use wgpu::{
-    BindGroup, Buffer, BufferUsages, Device, ExperimentalFeatures, InstanceDescriptor, Queue,
-    RenderPipeline, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
-    TextureUsages, util::DeviceExt,
+    BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, ExperimentalFeatures,
+    InstanceDescriptor, Queue, RenderPipeline, RequestAdapterOptions, Surface,
+    SurfaceConfiguration, TextureFormat, TextureUsages, util::DeviceExt,
 };
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
 use crate::{
     object::Object,
     resources::{Image, Resources},
-    texture,
+    texture::{self, Textures},
     util::{self, Instance, InstanceRaw, Size, Vertex},
 };
 
@@ -35,17 +35,16 @@ pub struct Renderer<'a> {
     index_buffer: Buffer,
     num_vertices: u32,
     num_indices: u32,
-    standing: texture::Texture,
-    diffuse_bind_group: BindGroup,
+    texture_bind_group_layout: BindGroupLayout,
 }
 
 impl<'a> Renderer<'a> {
     pub async fn new(
         display: OwnedDisplayHandle,
         window: Arc<Window>,
-        resources: &Resources,
+        resources: &'a Resources,
         images_sender: SyncSender<Vec<u8>>,
-    ) -> Renderer<'a> {
+    ) -> (Renderer<'a>, Textures) {
         let size = window.inner_size();
         let inst_descriptor = InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
@@ -100,9 +99,8 @@ impl<'a> Renderer<'a> {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
-        let diffuse_texture =
-            texture::Texture::from_image(&device, &queue, size, &resources.standing, None).unwrap();
-        let vertices = texture::Texture::create_vertices(size, &resources.standing);
+        let textures = Textures::fromResources(&device, &queue, size, &resources);
+        let (vertices, indices) = textures.vertices_and_indices();
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -111,7 +109,7 @@ impl<'a> Renderer<'a> {
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(QUAD_INDICES),
+            contents: bytemuck::cast_slice(indices.as_slice()),
             usage: wgpu::BufferUsages::INDEX,
         });
 
@@ -139,20 +137,6 @@ impl<'a> Renderer<'a> {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -165,26 +149,24 @@ impl<'a> Renderer<'a> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"), // 1.
-                buffers: &[Some(Vertex::desc()), Some(InstanceRaw::desc())], // 2.
+                entry_point: Some("vs_main"),
+                buffers: &[Some(Vertex::desc()), Some(InstanceRaw::desc())],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                // 3.
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    // 4.
                     format: surface_config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
+                front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
                 // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
@@ -193,17 +175,17 @@ impl<'a> Renderer<'a> {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None, // 1.
+            depth_stencil: None,
             multisample: wgpu::MultisampleState {
-                count: 1,                         // 2.
-                mask: !0,                         // 3.
-                alpha_to_coverage_enabled: false, // 4.
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
             },
-            multiview_mask: None, // 5.
-            cache: None,          // 6.
+            multiview_mask: None,
+            cache: None,
         });
 
-        Renderer {
+        let renderer = Renderer {
             wgpu_instance: inst,
             window: window,
             surface: surface,
@@ -217,10 +199,10 @@ impl<'a> Renderer<'a> {
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
             num_vertices: vertices.len() as u32,
-            num_indices: QUAD_INDICES.len() as u32,
-            standing: diffuse_texture,
-            diffuse_bind_group: diffuse_bind_group,
-        }
+            num_indices: indices.len() as u32,
+            texture_bind_group_layout: texture_bind_group_layout,
+        };
+        (renderer, textures)
     }
 
     pub fn render(&mut self, objects: Vec<Object>) {
@@ -246,7 +228,9 @@ impl<'a> Renderer<'a> {
                 return;
             }
             wgpu::CurrentSurfaceTexture::Validation => {
-                unreachable!("No error scope registered, so validation errors will panic")
+                println!("error, we'll ignore it...");
+                return;
+                //unreachable!("No error scope registered, so validation errors will panic")
             }
             wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface = self
@@ -313,9 +297,31 @@ impl<'a> Renderer<'a> {
         let (instances, instance_buffer) =
             Self::positions_to_instance_buffer(&self.device, &positions);
 
+        let diffuse_entries = objects
+            .iter()
+            .enumerate()
+            .flat_map(|(idx, it)| {
+                vec![
+                    wgpu::BindGroupEntry {
+                        binding: 2 * idx as u32,
+                        resource: wgpu::BindingResource::TextureView(&it.texture.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2 * idx as u32 + 1,
+                        resource: wgpu::BindingResource::Sampler(&it.texture.sampler),
+                    },
+                ]
+            })
+            .collect::<Vec<wgpu::BindGroupEntry>>();
+        let diffuse_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.texture_bind_group_layout,
+            entries: diffuse_entries.as_slice(),
+            label: Some("diffuse_bind_group"),
+        });
+
         // If you wanted to call any drawing commands, they would go here.
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+        renderpass.set_bind_group(0, &diffuse_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         renderpass.set_vertex_buffer(1, instance_buffer.slice(..));
         renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);

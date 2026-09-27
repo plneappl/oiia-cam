@@ -33,7 +33,7 @@ pub fn listen_to_microphone(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>
             move |data: &[f32], input_callback_info: &InputCallbackInfo| {
                 let mean: f32 = abs_limited_mean_kahan(data);
                 let mut s = state.lock().unwrap();
-                s.microphone_input_detected = f32::sqrt(mean) > 0.10;
+                s.microphone_input_detected = f32::sqrt(mean) > 0.08;
                 drop(s);
             },
             move |err| {},
@@ -54,7 +54,7 @@ fn abs_limited_mean_kahan(data: &[f32]) -> f32 {
     let mut c: f32 = 0.0;
     for i in data {
         // abs(i) instead of i
-        let iabs = abs(*i).min(0.5);
+        let iabs = abs(*i).min(0.3);
         let y = iabs - c;
         let t = sum + y;
         c = (t - sum) - y;

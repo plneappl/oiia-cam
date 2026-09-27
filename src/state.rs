@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     object::Object,
-    resources::{Image, Resources, place_image},
+    resources::{Image, Resources},
+    texture::{Texture, Textures},
     util::{Frame, Size, Vec2d},
 };
 
@@ -22,13 +23,16 @@ impl<'a> State<'a> {
             cat_img: &resources.standing,
         }
     }
-    pub fn render(&self, frame: &mut Frame) -> () {
-        place_image(&self.cat_img, frame, &self.cat_pos);
-    }
 
-    pub fn render_gpu(&self) -> Vec<Object> {
+    pub fn render_gpu<'b>(&self, textures: &'b Textures<'b>) -> Vec<Object<'b>> {
+        let tex: &Texture<'b> = textures
+            .all_textures()
+            .iter()
+            .find(|it| it.image == self.cat_img)
+            .expect("img never uploaded");
         vec![Object {
             position: self.cat_pos,
+            texture: tex,
         }]
     }
 }

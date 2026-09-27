@@ -2,7 +2,7 @@ use cgmath::Vector3;
 use wgpu::Extent3d;
 use winit::dpi::PhysicalSize;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Size {
     pub w: usize,
     pub h: usize,

@@ -14,12 +14,14 @@ use crate::object::Object;
 use crate::renderer::Renderer;
 use crate::resources::Resources;
 use crate::state::State;
+use crate::texture::Textures;
 use crate::util::Vec2d;
 
 pub struct App<'a> {
     pub renderer: Option<Renderer<'a>>,
     size: crate::util::Size,
     resources: &'a Resources,
+    textures: Option<Textures<'a>>,
     state: Arc<Mutex<State<'a>>>,
     sender: SyncSender<Vec<u8>>,
 }
@@ -35,6 +37,7 @@ impl<'a> App<'a> {
             renderer: None,
             size: size,
             resources: resources,
+            textures: None,
             sender: sender,
             state: state,
         }
@@ -65,7 +68,9 @@ impl<'a> ApplicationHandler for App<'a> {
             self.resources,
             self.sender.clone(),
         );
-        self.renderer = Some(pollster::block_on(renderer_fut));
+        let (renderer, textures) = pollster::block_on(renderer_fut);
+        self.renderer = Some(renderer);
+        self.textures = Some(textures);
         window.request_redraw();
     }
 
@@ -79,7 +84,9 @@ impl<'a> ApplicationHandler for App<'a> {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                renderer.render(self.state.lock().unwrap().render_gpu());
+                let textures = self.textures.as_mut().unwrap();
+                let objs = self.state.lock().unwrap().render_gpu(&textures);
+                renderer.render(objs);
             }
             WindowEvent::Resized(size) => {
                 renderer.resize(size);

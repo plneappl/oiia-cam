@@ -41,12 +41,13 @@ fn send_images_to_camera(
     }
 }
 
-fn state_thread(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>>) {
-    let mut animation = Bounce {
-        x_dir: 10,
-        y_dir: 10,
-    };
-    let frame_time = Duration::from_millis(1000 / 60);
+fn state_thread<'a>(
+    resources: &'a Resources,
+    is_running: Arc<AtomicBool>,
+    state: Arc<Mutex<State<'a>>>,
+) {
+    let mut animation = Bounce::new(resources);
+    let frame_time = Duration::from_millis(1000 / 20);
     while is_running.load(Ordering::Relaxed) {
         let now = Instant::now();
         let mut s = state.lock().unwrap();
@@ -93,7 +94,7 @@ fn main() {
             send_images_to_camera(continue_receiving.clone(), receiver, camera);
         });
         scope.spawn(|| {
-            state_thread(continue_receiving.clone(), state_mutex.clone());
+            state_thread(&resources, continue_receiving.clone(), state_mutex.clone());
         });
         scope.spawn(|| {
             microphone_thread(continue_receiving.clone(), state_mutex.clone());

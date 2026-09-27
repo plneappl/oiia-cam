@@ -1,18 +1,35 @@
 use std::sync::MutexGuard;
 
 use crate::animation::Animation;
+use crate::resources::{self, Resources};
 use crate::state::State;
 use crate::util::{Size, Vec2d};
 
-pub struct Bounce {
-    pub x_dir: i32,
-    pub y_dir: i32,
+pub struct Bounce<'a> {
+    x_dir: i32,
+    y_dir: i32,
+    next_animation_frame: usize,
+    resources: &'a Resources,
 }
 
-impl Animation for Bounce {
-    fn next_state<'a>(&mut self, state: &State<'a>) -> State<'a> {
+impl<'a> Bounce<'a> {
+    pub fn new(resources: &'a Resources) -> Bounce {
+        Bounce {
+            x_dir: 20,
+            y_dir: 20,
+            next_animation_frame: 0,
+            resources: resources,
+        }
+    }
+}
+
+impl<'a> Animation<'a> for Bounce<'a> {
+    fn next_state(&mut self, state: &State<'a>) -> State<'a> {
         if !state.microphone_input_detected {
-            return State { ..*state };
+            return State {
+                //cat_img: &self.resources.standing,
+                ..*state
+            };
         }
 
         let img_size_half = Size {
@@ -36,9 +53,12 @@ impl Animation for Bounce {
         if touches_top || touches_bottom {
             self.y_dir = -1 * self.y_dir
         }
+        let new_frame_idx = (self.next_animation_frame + 1) % self.resources.rotation.len();
+        self.next_animation_frame = new_frame_idx;
 
         State {
             cat_pos: new_pos,
+            cat_img: &self.resources.rotation[new_frame_idx],
             ..*state
         }
     }
