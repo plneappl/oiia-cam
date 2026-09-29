@@ -25,7 +25,7 @@ pub fn listen_to_microphone(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>
         .next()
         .expect("No input configs available (2)")
         .with_max_sample_rate();
-    let state = unsafe { transmute::<_, Arc<Mutex<State<'static>>>>(state) };
+    let state = unsafe { transmute::<_, Arc<Mutex<State>>>(state) };
 
     let stream = device
         .build_input_stream(

@@ -2,7 +2,7 @@ use cgmath::Vector3;
 use wgpu::Extent3d;
 use winit::dpi::PhysicalSize;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Size {
     pub w: usize,
     pub h: usize,
@@ -16,9 +16,67 @@ impl Size {
             depth_or_array_layers: 1,
         }
     }
+
+    pub fn to_vec2d(&self) -> Vec2d {
+        Vec2d {
+            x: self.w as i32,
+            y: self.h as i32,
+        }
+    }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug)]
+pub struct BoundingBox {
+    pub bottom_left: Vec2d,
+    pub size: Vec2d,
+}
+
+impl BoundingBox {
+    pub fn zero() -> Self {
+        BoundingBox {
+            bottom_left: Vec2d { x: 0, y: 0 },
+            size: Vec2d { x: 0, y: 0 },
+        }
+    }
+
+    pub fn top_right(&self) -> Vec2d {
+        self.bottom_left.plus(&self.size)
+    }
+
+    pub fn offset(&self, off: &Vec2d) -> BoundingBox {
+        BoundingBox {
+            bottom_left: self.bottom_left.plus(off),
+            size: self.size,
+        }
+    }
+
+    pub fn plus(&self, other: &BoundingBox) -> BoundingBox {
+        let self_top_right = self.top_right();
+        let other_top_right = other.top_right();
+        let bottom_left = Vec2d {
+            x: self.bottom_left.x.min(other.bottom_left.x),
+            y: self.bottom_left.y.min(other.bottom_left.y),
+        };
+        let top_right = Vec2d {
+            x: self_top_right.x.max(other_top_right.x),
+            y: self_top_right.y.max(other_top_right.y),
+        };
+        BoundingBox {
+            bottom_left: bottom_left,
+            size: top_right.minus(&bottom_left),
+        }
+    }
+
+    pub fn contains(self, point: &Vec2d) -> bool {
+        let x_contains =
+            self.bottom_left.x <= point.x && point.x <= self.bottom_left.x + self.size.x;
+        let y_contains =
+            self.bottom_left.y <= point.y && point.y <= self.bottom_left.y + self.size.y;
+        x_contains && y_contains
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Vec2d {
     pub x: i32,
     pub y: i32,
@@ -39,16 +97,18 @@ impl Vec2d {
             y: self.y + other.y,
         }
     }
-    pub fn plus_x(&self, x_off: i32) -> Vec2d {
+
+    pub fn minus(&self, other: &Vec2d) -> Vec2d {
         Vec2d {
-            x: self.x + x_off,
-            y: self.y,
+            x: self.x - other.x,
+            y: self.y - other.y,
         }
     }
-    pub fn plus_y(&self, y_off: i32) -> Vec2d {
+
+    pub fn div(&self, divisor: i32) -> Vec2d {
         Vec2d {
-            x: self.x,
-            y: self.y + y_off,
+            x: self.x / divisor,
+            y: self.y / divisor,
         }
     }
 }

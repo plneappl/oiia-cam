@@ -13,7 +13,7 @@ use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
 use crate::{
     object::Object,
-    resources::{Image, Resources},
+    resources::Image,
     texture::{self, Textures},
     util::{self, Instance, InstanceRaw, Size, Vertex},
 };
@@ -42,7 +42,6 @@ impl<'a> Renderer<'a> {
     pub async fn new(
         display: OwnedDisplayHandle,
         window: Arc<Window>,
-        resources: &'a Resources,
         images_sender: SyncSender<Vec<u8>>,
     ) -> (Renderer<'a>, Textures) {
         let size = window.inner_size();
@@ -99,7 +98,7 @@ impl<'a> Renderer<'a> {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
-        let textures = Textures::fromResources(&device, &queue, size, &resources);
+        let textures = Textures::read_textures(&device, &queue, size);
         let (vertices, indices) = textures.vertices_and_indices();
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

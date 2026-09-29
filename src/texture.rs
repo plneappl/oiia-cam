@@ -5,37 +5,38 @@ use image::GenericImageView;
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    resources::{Image, Resources},
+    resources::{self, Image},
     util::{Size, Vertex},
 };
 
-pub struct Texture<'a> {
+#[derive(Debug, Clone)]
+pub struct Texture {
     #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
-    pub image: &'a Image,
+    pub image: Image,
 }
 
-pub struct Textures<'a> {
-    pub standing: Texture<'a>,
-    pub rotation: Vec<Texture<'a>>,
+pub struct Textures {
+    pub standing: Texture,
+    pub rotation: Vec<Texture>,
 }
 
 const QUAD_INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
-impl<'a> Texture<'a> {
+impl Texture {
     pub fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         window_size: PhysicalSize<u32>,
         texture_count: u16,
-        img: &'a Image,
+        img: Image,
+        rgba: Vec<u8>,
         label: Option<&str>,
     ) -> Result<Self> {
-        let rgba = &img.buf;
         let dimensions = img.size;
 
         let size = dimensions.to_extend3d();
@@ -76,7 +77,7 @@ impl<'a> Texture<'a> {
             mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
-        let vertices = Self::create_vertices(window_size, img);
+        let vertices = Self::create_vertices(window_size, &img);
 
         Ok(Self {
             texture: texture,
@@ -115,22 +116,31 @@ impl<'a> Texture<'a> {
     }
 }
 
-impl<'a> Textures<'a> {
-    pub fn fromResources(
+impl Textures {
+    pub fn read_textures(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         window_size: PhysicalSize<u32>,
-        resources: &'a Resources,
     ) -> Self {
         let mut count = 0;
-        let standing_texture =
-            Texture::from_image(device, queue, window_size, count, &resources.standing, None)
-                .unwrap();
+        let (standing_image, standing_buf) = resources::read_standing();
+        let standing_texture = Texture::from_image(
+            device,
+            queue,
+            window_size,
+            count,
+            standing_image,
+            standing_buf,
+            None,
+        )
+        .unwrap();
         count += 1;
+        let rotation = vec![resources::read_standing(), resources::read_standing_rev()];
         let mut rotation_textures = Vec::new();
-        rotation_textures.reserve(resources.rotation.len());
-        for img in &resources.rotation {
-            let tex = Texture::from_image(device, queue, window_size, count, &img, None).unwrap();
+        rotation_textures.reserve(rotation.len());
+        for (img, buf) in rotation {
+            let tex =
+                Texture::from_image(device, queue, window_size, count, img, buf, None).unwrap();
             rotation_textures.push(tex);
             count += 1;
         }

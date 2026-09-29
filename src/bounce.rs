@@ -1,65 +1,76 @@
 use std::sync::MutexGuard;
 
 use crate::animation::Animation;
-use crate::resources::{self, Resources};
+use crate::object::Object;
+use crate::resources::{self};
 use crate::state::State;
-use crate::util::{Size, Vec2d};
+use crate::texture::Textures;
+use crate::util::{BoundingBox, Size, Vec2d};
 
-pub struct Bounce<'a> {
+pub struct Bounce {
     x_dir: i32,
     y_dir: i32,
-    next_animation_frame: usize,
-    resources: &'a Resources,
+    pos: Vec2d,
+    inner: Box<dyn Animation>,
 }
 
-impl<'a> Bounce<'a> {
-    pub fn new(resources: &'a Resources) -> Bounce {
+impl Bounce {
+    pub fn new(inner: Box<dyn Animation>) -> Bounce {
         Bounce {
             x_dir: 20,
             y_dir: 20,
-            next_animation_frame: 0,
-            resources: resources,
+            pos: Vec2d { x: 0, y: 0 },
+            inner: inner,
         }
     }
 }
 
-impl<'a> Animation<'a> for Bounce<'a> {
-    fn next_state(&mut self, state: &State<'a>) -> State<'a> {
-        if !state.microphone_input_detected {
-            return State {
-                //cat_img: &self.resources.standing,
-                ..*state
-            };
-        }
+impl Animation for Bounce {
+    fn bounding_box(&self) -> BoundingBox {
+        self.inner.bounding_box().offset(&self.pos)
+    }
 
-        let img_size_half = Size {
-            w: state.cat_img.size.w / 2,
-            h: state.cat_img.size.h / 2,
-        };
-        let new_pos = state.cat_pos.plus(&Vec2d {
+    fn advance_animation(&mut self, state: &State) {
+        self.inner.advance_animation(state);
+        if !state.microphone_input_detected {
+            return;
+        }
+        let new_pos = self.pos.plus(&Vec2d {
             x: self.x_dir,
             y: self.y_dir,
         });
-        let touches_left = new_pos.x - img_size_half.w as i32 <= 0;
-        let touches_right =
-            usize::try_from(new_pos.x + img_size_half.w as i32).unwrap_or(0) > state.size.w;
-        let touches_top = new_pos.y - img_size_half.h as i32 <= 0;
-        let touches_bottom =
-            usize::try_from(new_pos.y + img_size_half.h as i32).unwrap_or(0) > state.size.h;
+        let bb = self.bounding_box();
+        let bb1 = self.inner.bounding_box();
+        let bb_top_right = bb.top_right();
+        let touches_left = bb.bottom_left.x <= 0;
+        let touches_bottom = bb.bottom_left.y <= 0;
+        let touches_right = bb_top_right.x >= state.size.w as i32;
+        let touches_top = bb_top_right.y >= state.size.h as i32;
 
-        if touches_left || touches_right {
-            self.x_dir = -1 * self.x_dir
+        if touches_left {
+            self.x_dir = self.x_dir.abs();
         }
-        if touches_top || touches_bottom {
-            self.y_dir = -1 * self.y_dir
+        if touches_right {
+            self.x_dir = -self.x_dir.abs();
         }
-        let new_frame_idx = (self.next_animation_frame + 1) % self.resources.rotation.len();
-        self.next_animation_frame = new_frame_idx;
+        if touches_top {
+            self.y_dir = -self.y_dir.abs();
+        }
+        if touches_bottom {
+            self.y_dir = self.y_dir.abs();
+        }
+        self.pos = new_pos;
+    }
 
-        State {
-            cat_pos: new_pos,
-            cat_img: &self.resources.rotation[new_frame_idx],
-            ..*state
+    fn objects(&self, state: &State) -> Vec<Object> {
+        let inner_objects = self.inner.objects(state);
+        let mut result: Vec<Object> = Vec::new();
+        for obj in inner_objects {
+            result.push(Object {
+                position: obj.position.plus(&self.pos),
+                texture: obj.texture,
+            });
         }
+        return result;
     }
 }
