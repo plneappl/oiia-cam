@@ -4,42 +4,54 @@ use wgpu::Device;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Image {
-    pub label: String,
-    pub size: Size,
+    pub real_size: Size,
+    pub scaled_size: Size,
 }
 
 impl Image {
     pub fn bounding_box(&self, centered_at: Vec2d) -> BoundingBox {
-        let size = self.size.to_vec2d();
+        let size = self.scaled_size.to_vec2d();
         let half_size = size.div(2);
         BoundingBox {
             bottom_left: centered_at.minus(&half_size),
-            size: self.size.to_vec2d(),
+            size: size,
         }
     }
 }
 
 macro_rules! read_img {
-    ($file:expr, $id:expr $(,)?) => {{
+    ($file:expr, $scale:expr $(,)?) => {{
         let img = load_from_memory(include_bytes!($file))
             .unwrap()
             .into_rgba8();
-        let size = Size {
-            w: usize::try_from(img.width()).unwrap(),
-            h: usize::try_from(img.height()).unwrap(),
+        let real_size = Size {
+            w: (img.width()) as usize,
+            h: (img.height()) as usize,
+        };
+        let scaled_size = Size {
+            w: (img.width() as f32 * $scale) as usize,
+            h: (img.height() as f32 * $scale) as usize,
         };
         let img_struct = Image {
-            label: String::from($id),
-            size: size,
+            scaled_size: scaled_size,
+            real_size: real_size,
         };
         (img_struct, img.into_vec())
     }};
 }
 
 pub fn read_standing() -> (Image, Vec<u8>) {
-    read_img!("../resources/cat.png", "standing")
+    read_img!("../resources/cat.png", 1.0)
 }
 
 pub fn read_standing_rev() -> (Image, Vec<u8>) {
-    read_img!("../resources/cat_rev.png", "cat_rev")
+    read_img!("../resources/cat_rev.png", 1.0)
+}
+
+pub fn read_popcat_closed() -> (Image, Vec<u8>) {
+    read_img!("../resources/popcat_1.png", 0.25)
+}
+
+pub fn read_popcat_open() -> (Image, Vec<u8>) {
+    read_img!("../resources/popcat_2.png", 0.25)
 }

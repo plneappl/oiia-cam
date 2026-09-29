@@ -9,15 +9,15 @@ use crate::{
     util::{BoundingBox, Vec2d},
 };
 
-pub struct ImageAnim {
+pub struct ToggleAnim {
     idx: usize,
     frames: Vec<Texture>,
     pos: Vec2d,
 }
 
-impl ImageAnim {
+impl ToggleAnim {
     pub fn new(frames: &Vec<Texture>, pos: Vec2d) -> Self {
-        ImageAnim {
+        ToggleAnim {
             idx: 0,
             frames: frames.clone(),
             pos: pos,
@@ -28,14 +28,16 @@ impl ImageAnim {
 //cat_pos: Vec2d { x: 400, y: 400 },
 //cat_img: &resources.standing,
 
-impl Animation for ImageAnim {
+impl Animation for ToggleAnim {
     fn bounding_box(&self) -> BoundingBox {
         animation::bounding_box(self.pos, &self.frames)
     }
 
     fn advance_animation(&mut self, state: &State) {
         if state.microphone_input_detected {
-            self.idx = (self.idx + 1) % self.frames.len();
+            self.idx = 1;
+        } else {
+            self.idx = 0;
         }
     }
 

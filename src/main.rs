@@ -27,6 +27,7 @@ mod resources;
 mod scene;
 mod state;
 mod texture;
+mod toggleanim;
 mod util;
 
 fn main() {

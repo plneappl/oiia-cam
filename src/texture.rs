@@ -16,28 +16,30 @@ pub struct Texture {
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
+    pub indices: Vec<u32>,
     pub image: Image,
+    pub index: u32,
 }
 
 pub struct Textures {
     pub standing: Texture,
     pub rotation: Vec<Texture>,
+    pub popcat: Vec<Texture>,
 }
 
-const QUAD_INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
+const QUAD_INDICES: &[u32] = &[1, 0, 2, 0, 3, 2];
 
 impl Texture {
     pub fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         window_size: PhysicalSize<u32>,
-        texture_count: u16,
+        texture_count: u32,
         img: Image,
         rgba: Vec<u8>,
         label: Option<&str>,
     ) -> Result<Self> {
-        let dimensions = img.size;
+        let dimensions = img.real_size;
 
         let size = dimensions.to_extend3d();
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -84,16 +86,20 @@ impl Texture {
             view: view,
             sampler: sampler,
             vertices: vertices,
-            indices: QUAD_INDICES.iter().map(|it| it + texture_count).collect(),
+            indices: QUAD_INDICES
+                .iter()
+                .map(|it| it + 4 * texture_count)
+                .collect(),
             image: img,
+            index: texture_count,
         })
     }
 
     fn create_vertices(window_size: PhysicalSize<u32>, img: &Image) -> Vec<Vertex> {
         let window_width = window_size.width as f64;
         let window_height = window_size.height as f64;
-        let w = (-1.0 * (img.size.w as f64) / window_width) as f32;
-        let h = (-1.0 * (img.size.h as f64) / window_height) as f32;
+        let w = (-1.0 * (img.scaled_size.w as f64) / window_width) as f32;
+        let h = (-1.0 * (img.scaled_size.h as f64) / window_height) as f32;
 
         vec![
             Vertex {
@@ -123,30 +129,30 @@ impl Textures {
         window_size: PhysicalSize<u32>,
     ) -> Self {
         let mut count = 0;
-        let (standing_image, standing_buf) = resources::read_standing();
-        let standing_texture = Texture::from_image(
-            device,
-            queue,
-            window_size,
-            count,
-            standing_image,
-            standing_buf,
-            None,
-        )
-        .unwrap();
-        count += 1;
+        let mut get_texture = |(image, buf): (Image, Vec<u8>)| {
+            let tex =
+                Texture::from_image(device, queue, window_size, count, image, buf, None).unwrap();
+            count += 1;
+            tex
+        };
+
+        let standing_data = resources::read_standing();
+        let standing_texture = get_texture(standing_data);
         let rotation = vec![resources::read_standing(), resources::read_standing_rev()];
         let mut rotation_textures = Vec::new();
         rotation_textures.reserve(rotation.len());
-        for (img, buf) in rotation {
-            let tex =
-                Texture::from_image(device, queue, window_size, count, img, buf, None).unwrap();
+        for data in rotation {
+            let tex = get_texture(data);
             rotation_textures.push(tex);
-            count += 1;
         }
+        let popcat = vec![
+            get_texture(resources::read_popcat_closed()),
+            get_texture(resources::read_popcat_open()),
+        ];
         Textures {
             standing: standing_texture,
             rotation: rotation_textures,
+            popcat: popcat,
         }
     }
 
@@ -154,11 +160,12 @@ impl Textures {
         vec![
             vec![&self.standing],
             self.rotation.iter().collect::<Vec<&Texture>>(),
+            self.popcat.iter().collect::<Vec<&Texture>>(),
         ]
         .concat()
     }
 
-    pub fn vertices_and_indices(&self) -> (Vec<Vertex>, Vec<u16>) {
+    pub fn vertices_and_indices(&self) -> (Vec<Vertex>, Vec<u32>) {
         let all_texs = self.all_textures();
         let vertices = all_texs
             .iter()
@@ -167,7 +174,7 @@ impl Textures {
         let indices = all_texs
             .iter()
             .flat_map(|it| it.indices.clone())
-            .collect::<Vec<u16>>();
+            .collect::<Vec<u32>>();
         return (vertices, indices);
     }
 }

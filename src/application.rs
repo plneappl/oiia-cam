@@ -22,6 +22,7 @@ use crate::object::Object;
 use crate::renderer::Renderer;
 use crate::state::State;
 use crate::texture::Textures;
+use crate::toggleanim::ToggleAnim;
 use crate::util::Vec2d;
 
 pub struct App<'a> {
@@ -29,7 +30,7 @@ pub struct App<'a> {
     size: crate::util::Size,
     textures: Option<Textures>,
     state: Arc<Mutex<State>>,
-    animations: Arc<Mutex<Vec<Mutex<Box<dyn Animation>>>>>,
+    animations: Arc<Mutex<Vec<Box<dyn Animation>>>>,
     continue_receiving: Arc<AtomicBool>,
 }
 
@@ -66,7 +67,7 @@ impl<'a> App<'a> {
     }
 
     fn animations_thread(
-        animations: Arc<Mutex<Vec<Mutex<Box<dyn Animation>>>>>,
+        animations: Arc<Mutex<Vec<Box<dyn Animation>>>>,
         is_running: Arc<AtomicBool>,
         state: Arc<Mutex<State>>,
     ) {
@@ -75,7 +76,7 @@ impl<'a> App<'a> {
             let now = Instant::now();
             let s = state.lock().unwrap();
             animations.lock().unwrap().iter_mut().for_each(|animation| {
-                animation.lock().unwrap().advance_animation(&s);
+                animation.advance_animation(&s);
             });
             drop(s);
             let elapsed = now.elapsed();
@@ -97,9 +98,19 @@ impl<'a> App<'a> {
     fn create_animations(&mut self, textures: &Textures) {
         let oiia_animation = ImageAnim::new(&textures.rotation, Vec2d { x: 300, y: 400 });
         let oiia_bounce_animation = Bounce::new(Box::new(oiia_animation));
-        self.animations = Arc::new(Mutex::new(vec![Mutex::new(Box::new(
-            oiia_bounce_animation,
-        ))]));
+        let popcat_size = textures
+            .popcat
+            .iter()
+            .next()
+            .unwrap()
+            .image
+            .scaled_size
+            .to_vec2d();
+        let popcat_animation = ToggleAnim::new(&textures.popcat, popcat_size.div(2));
+        self.animations = Arc::new(Mutex::new(vec![
+            Box::new(oiia_bounce_animation),
+            Box::new(popcat_animation),
+        ]));
     }
 
     fn launch_animations(&mut self, receiver: Receiver<Vec<u8>>) {
@@ -133,7 +144,7 @@ fn spawn_camera_thread(
 }
 
 fn spawn_animations_thread(
-    animations: Arc<Mutex<Vec<Mutex<Box<dyn Animation>>>>>,
+    animations: Arc<Mutex<Vec<Box<dyn Animation>>>>,
     continue_receiving: Arc<AtomicBool>,
     state: Arc<Mutex<State>>,
 ) {
@@ -187,7 +198,7 @@ impl<'a> ApplicationHandler for App<'a> {
                 let anims = self.animations.lock().unwrap();
                 let objs = anims
                     .iter()
-                    .flat_map(|it| it.lock().unwrap().objects(&state))
+                    .flat_map(|it| it.objects(&state))
                     .collect::<Vec<_>>();
                 renderer.render(objs);
             }

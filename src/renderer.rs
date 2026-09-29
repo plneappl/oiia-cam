@@ -5,20 +5,17 @@ use std::sync::{
 
 use cgmath::{Quaternion, Vector3, prelude::*};
 use wgpu::{
-    BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, ExperimentalFeatures,
-    InstanceDescriptor, Queue, RenderPipeline, RequestAdapterOptions, Surface,
-    SurfaceConfiguration, TextureFormat, TextureUsages, util::DeviceExt,
+    BindGroupLayout, Buffer, BufferUsages, Device, ExperimentalFeatures, InstanceDescriptor, Queue,
+    RenderPass, RenderPipeline, RequestAdapterOptions, Surface, SurfaceConfiguration,
+    TextureFormat, TextureUsages, util::DeviceExt,
 };
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
 use crate::{
     object::Object,
-    resources::Image,
-    texture::{self, Textures},
-    util::{self, Instance, InstanceRaw, Size, Vertex},
+    texture::Textures,
+    util::{Instance, InstanceRaw, Vertex},
 };
-
-const QUAD_INDICES: &[u16] = &[1, 0, 2, 0, 3, 2];
 
 pub struct Renderer<'a> {
     wgpu_instance: wgpu::Instance,
@@ -128,8 +125,6 @@ impl<'a> Renderer<'a> {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
@@ -167,11 +162,8 @@ impl<'a> Renderer<'a> {
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
             depth_stencil: None,
@@ -289,43 +281,11 @@ impl<'a> Renderer<'a> {
             },
         };
 
-        let positions = objects
-            .iter()
-            .map(|it| it.position.to_screen(self.size))
-            .collect::<Vec<_>>();
-        let (instances, instance_buffer) =
-            Self::positions_to_instance_buffer(&self.device, &positions);
-
-        let diffuse_entries = objects
-            .iter()
-            .enumerate()
-            .flat_map(|(idx, it)| {
-                vec![
-                    wgpu::BindGroupEntry {
-                        binding: 2 * idx as u32,
-                        resource: wgpu::BindingResource::TextureView(&it.texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2 * idx as u32 + 1,
-                        resource: wgpu::BindingResource::Sampler(&it.texture.sampler),
-                    },
-                ]
-            })
-            .collect::<Vec<wgpu::BindGroupEntry>>();
-        let diffuse_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &self.texture_bind_group_layout,
-            entries: diffuse_entries.as_slice(),
-            label: Some("diffuse_bind_group"),
-        });
-
         // If you wanted to call any drawing commands, they would go here.
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.set_bind_group(0, &diffuse_bind_group, &[]);
-        renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        renderpass.set_vertex_buffer(1, instance_buffer.slice(..));
-        renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-        renderpass.draw_indexed(0..self.num_indices, 0, 0..instances.len() as _);
+        for object in objects {
+            self.render_object(&mut renderpass, object);
+        }
         // End the renderpass.
         drop(renderpass);
 
@@ -354,6 +314,39 @@ impl<'a> Renderer<'a> {
                     images.send(buf.to_vec());
                 }
             });
+    }
+
+    fn render_object(&mut self, renderpass: &mut RenderPass, object: Object) {
+        let position = object.position.to_screen(self.size);
+        let (instances, instance_buffer) =
+            Self::positions_to_instance_buffer(&self.device, &vec![position]);
+
+        let diffuse_entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&object.texture.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&object.texture.sampler),
+            },
+        ];
+        let diffuse_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.texture_bind_group_layout,
+            entries: diffuse_entries.as_slice(),
+            label: Some("diffuse_bind_group"),
+        });
+
+        renderpass.set_bind_group(0, &diffuse_bind_group, &[]);
+        renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        renderpass.set_vertex_buffer(1, instance_buffer.slice(..));
+        renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
+        renderpass.draw_indexed(
+            (object.texture.index * 6)..(object.texture.index * 6 + 6),
+            0,
+            0..instances.len() as _,
+        );
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
