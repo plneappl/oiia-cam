@@ -15,10 +15,10 @@ pub struct Bounce {
 }
 
 impl Bounce {
-    pub fn new(inner: Box<dyn Animation>) -> Bounce {
+    pub fn new(inner: Box<dyn Animation>, speed: i32) -> Bounce {
         Bounce {
-            x_dir: 20,
-            y_dir: 20,
+            x_dir: speed,
+            y_dir: speed,
             pos: Vec2d { x: 0, y: 0 },
             inner: inner,
         }
@@ -32,7 +32,7 @@ impl Animation for Bounce {
 
     fn advance_animation(&mut self, state: &State) {
         self.inner.advance_animation(state);
-        if !state.microphone_input_detected {
+        if !state.microphone_input_detected(0) {
             return;
         }
         let new_pos = self.pos.plus(&Vec2d {

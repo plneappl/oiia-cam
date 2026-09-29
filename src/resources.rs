@@ -44,8 +44,25 @@ pub fn read_standing() -> (Image, Vec<u8>) {
     read_img!("../resources/cat.png", 1.0)
 }
 
-pub fn read_standing_rev() -> (Image, Vec<u8>) {
-    read_img!("../resources/cat_rev.png", 1.0)
+pub fn read_spinning_animation() -> Vec<(Image, Vec<u8>)> {
+    vec![
+        read_img!("../resources/transp_spinning_01.png", 0.36),
+        read_img!("../resources/transp_spinning_02.png", 0.36),
+        read_img!("../resources/transp_spinning_03.png", 0.36),
+        read_img!("../resources/transp_spinning_04.png", 0.36),
+        read_img!("../resources/transp_spinning_05.png", 0.36),
+        read_img!("../resources/transp_spinning_06.png", 0.36),
+        read_img!("../resources/transp_spinning_07.png", 0.36),
+        read_img!("../resources/transp_spinning_08.png", 0.36),
+        read_img!("../resources/transp_spinning_09.png", 0.36),
+        read_img!("../resources/transp_spinning_10.png", 0.36),
+        read_img!("../resources/transp_spinning_11.png", 0.36),
+        read_img!("../resources/transp_spinning_12.png", 0.36),
+        read_img!("../resources/transp_spinning_13.png", 0.36),
+        read_img!("../resources/transp_spinning_14.png", 0.36),
+        read_img!("../resources/transp_spinning_15.png", 0.36),
+        read_img!("../resources/transp_spinning_16.png", 0.36),
+    ]
 }
 
 pub fn read_popcat_closed() -> (Image, Vec<u8>) {

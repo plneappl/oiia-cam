@@ -88,7 +88,7 @@ impl<'a> Renderer<'a> {
             width: size.width,
             height: size.height,
             desired_maximum_frame_latency: 2,
-            present_mode: wgpu::PresentMode::AutoNoVsync,
+            present_mode: wgpu::PresentMode::AutoVsync,
         };
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {

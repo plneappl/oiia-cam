@@ -22,7 +22,6 @@ use crate::object::Object;
 use crate::renderer::Renderer;
 use crate::state::State;
 use crate::texture::Textures;
-use crate::toggleanim::ToggleAnim;
 use crate::util::Vec2d;
 
 pub struct App<'a> {
@@ -67,11 +66,12 @@ impl<'a> App<'a> {
     }
 
     fn animations_thread(
+        fps: u64,
         animations: Arc<Mutex<Vec<Box<dyn Animation>>>>,
         is_running: Arc<AtomicBool>,
         state: Arc<Mutex<State>>,
     ) {
-        let frame_time = Duration::from_millis(1000 / 20);
+        let frame_time = Duration::from_millis(1000 / fps);
         while is_running.load(Ordering::Relaxed) {
             let now = Instant::now();
             let s = state.lock().unwrap();
@@ -96,45 +96,49 @@ impl<'a> App<'a> {
     }
 
     fn create_animations(&mut self, textures: &Textures) {
-        let oiia_animation = ImageAnim::new(&textures.rotation, Vec2d { x: 300, y: 400 });
-        let oiia_bounce_animation = Bounce::new(Box::new(oiia_animation));
-        let popcat_size = textures
-            .popcat
-            .iter()
-            .next()
-            .unwrap()
-            .image
-            .scaled_size
-            .to_vec2d();
-        let popcat_animation = ToggleAnim::new(&textures.popcat, popcat_size.div(2));
+        let oiia_animation = ImageAnim::new(
+            &textures.standing,
+            &textures.rotation,
+            Vec2d { x: 300, y: 400 },
+            0,
+        );
+        let oiia_bounce_animation = Bounce::new(Box::new(oiia_animation), 10);
+        let popcat_size = textures.popcat_closed.image.scaled_size.to_vec2d();
+        let popcat_animation = ImageAnim::new(
+            &textures.popcat_closed,
+            &vec![textures.popcat_open.clone()],
+            popcat_size.div(2),
+            40,
+        );
         self.animations = Arc::new(Mutex::new(vec![
             Box::new(oiia_bounce_animation),
             Box::new(popcat_animation),
         ]));
     }
 
-    fn launch_animations(&mut self, receiver: Receiver<Vec<u8>>) {
+    fn launch_animations(&mut self, fps: u64, receiver: Receiver<Vec<u8>>) {
         let continue_receiving = self.continue_receiving.clone();
         let state = self.state.clone();
         let size = self.size.clone();
         let animations = self.animations.clone();
-        spawn_camera_thread(receiver, continue_receiving.clone(), size);
-        spawn_animations_thread(animations, continue_receiving.clone(), state.clone());
+        spawn_camera_thread(fps, receiver, continue_receiving.clone(), size);
+        spawn_animations_thread(fps, animations, continue_receiving.clone(), state.clone());
         spawn_microphone_thread(continue_receiving, state);
     }
 }
 
 fn spawn_camera_thread(
+    fps: u64,
     receiver: Receiver<Vec<u8>>,
     continue_receiving: Arc<AtomicBool>,
     size: crate::util::Size,
 ) {
     thread::spawn(move || {
-        let fps = 60.0;
+        let fps = fps as f64;
         let camera = Camera::builder(
             u32::try_from(size.w).unwrap(),
             u32::try_from(size.h).unwrap(),
-            f64::from(fps),
+            fps,
         )
         .format(PixelFormat::RGBA)
         .build()
@@ -144,12 +148,13 @@ fn spawn_camera_thread(
 }
 
 fn spawn_animations_thread(
+    fps: u64,
     animations: Arc<Mutex<Vec<Box<dyn Animation>>>>,
     continue_receiving: Arc<AtomicBool>,
     state: Arc<Mutex<State>>,
 ) {
     thread::spawn(move || {
-        App::animations_thread(animations, continue_receiving, state);
+        App::animations_thread(fps, animations, continue_receiving, state);
     });
 }
 
@@ -179,7 +184,7 @@ impl<'a> ApplicationHandler for App<'a> {
         self.renderer = Some(renderer);
         self.create_animations(&textures);
         self.textures = Some(textures);
-        self.launch_animations(receiver);
+        self.launch_animations(60, receiver);
         window.request_redraw();
     }
 

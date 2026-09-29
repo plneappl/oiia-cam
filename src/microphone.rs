@@ -33,7 +33,8 @@ pub fn listen_to_microphone(is_running: Arc<AtomicBool>, state: Arc<Mutex<State>
             move |data: &[f32], input_callback_info: &InputCallbackInfo| {
                 let mean: f32 = abs_limited_mean_kahan(data);
                 let mut s = state.lock().unwrap();
-                s.microphone_input_detected = f32::sqrt(mean) > 0.08;
+                let microphone_input_detected = f32::sqrt(mean) > 0.08;
+                s.update_microphone(microphone_input_detected);
                 drop(s);
             },
             move |err| {},

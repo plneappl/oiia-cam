@@ -24,7 +24,8 @@ pub struct Texture {
 pub struct Textures {
     pub standing: Texture,
     pub rotation: Vec<Texture>,
-    pub popcat: Vec<Texture>,
+    pub popcat_closed: Texture,
+    pub popcat_open: Texture,
 }
 
 const QUAD_INDICES: &[u32] = &[1, 0, 2, 0, 3, 2];
@@ -138,21 +139,20 @@ impl Textures {
 
         let standing_data = resources::read_standing();
         let standing_texture = get_texture(standing_data);
-        let rotation = vec![resources::read_standing(), resources::read_standing_rev()];
+        let rotation = resources::read_spinning_animation();
         let mut rotation_textures = Vec::new();
         rotation_textures.reserve(rotation.len());
         for data in rotation {
             let tex = get_texture(data);
             rotation_textures.push(tex);
         }
-        let popcat = vec![
-            get_texture(resources::read_popcat_closed()),
-            get_texture(resources::read_popcat_open()),
-        ];
+        let popcat_closed = get_texture(resources::read_popcat_closed());
+        let popcat_open = get_texture(resources::read_popcat_open());
         Textures {
             standing: standing_texture,
             rotation: rotation_textures,
-            popcat: popcat,
+            popcat_closed: popcat_closed,
+            popcat_open: popcat_open,
         }
     }
 
@@ -160,7 +160,7 @@ impl Textures {
         vec![
             vec![&self.standing],
             self.rotation.iter().collect::<Vec<&Texture>>(),
-            self.popcat.iter().collect::<Vec<&Texture>>(),
+            vec![&self.popcat_closed, &self.popcat_open],
         ]
         .concat()
     }

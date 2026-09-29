@@ -11,16 +11,20 @@ use crate::{
 
 pub struct ImageAnim {
     idx: usize,
+    still: Texture,
     frames: Vec<Texture>,
     pos: Vec2d,
+    sensitivity: i16,
 }
 
 impl ImageAnim {
-    pub fn new(frames: &Vec<Texture>, pos: Vec2d) -> Self {
+    pub fn new(still: &Texture, frames: &Vec<Texture>, pos: Vec2d, sensitivity: i16) -> Self {
         ImageAnim {
             idx: 0,
+            still: still.clone(),
             frames: frames.clone(),
             pos: pos,
+            sensitivity: sensitivity,
         }
     }
 }
@@ -34,16 +38,16 @@ impl Animation for ImageAnim {
     }
 
     fn advance_animation(&mut self, state: &State) {
-        if state.microphone_input_detected {
+        if state.microphone_input_detected(self.sensitivity) {
             self.idx = (self.idx + 1) % self.frames.len();
         }
     }
 
     fn objects(&self, state: &State) -> Vec<Object> {
-        let texture = if state.microphone_input_detected {
+        let texture = if state.microphone_input_detected(self.sensitivity) {
             self.frames[self.idx].clone()
         } else {
-            self.frames[0].clone()
+            self.still.clone()
         };
         return vec![Object {
             position: self.pos,
